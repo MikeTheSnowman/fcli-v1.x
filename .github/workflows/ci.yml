@@ -1,5 +1,7 @@
 name: Build and release
 on:
+  workflow_dispatch:
+  
   push:
     branches:
       - '**'
@@ -126,9 +128,14 @@ jobs:
       - name: Package native fcli
         run: tar -zcvf fcli-linux.tgz fcli -C ./artifact fcli_completion
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           path: ./fcli-linux.tgz
+          name: fcli-linux
+
+#      - uses: actions/upload-artifact@v3
+#        with:
+#          path: ./fcli-linux.tgz
 
   native_mac:
     name: native-image-mac
@@ -166,9 +173,14 @@ jobs:
       - name: Package native fcli
         run: tar -zcvf fcli-mac.tgz fcli -C ./artifact fcli_completion
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           path: ./fcli-mac.tgz
+          name: fcli-mac
+
+#      - uses: actions/upload-artifact@v3
+#        with:
+#          path: ./fcli-mac.tgz
 
   native_win:
     name: native-image-win
@@ -210,120 +222,125 @@ jobs:
       - name: Package native fcli
         run: 7z a fcli-windows.zip fcli*.exe
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           path: ./fcli-windows.zip
-        
-  release:
-    name: release
-    if: needs.build.outputs.do_release
-    needs: [build, native_linux, native_mac, native_win]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check-out source code
-        uses: actions/checkout@v3
-        
-      - name: Download artifacts
-        uses: actions/download-artifact@v3
-        with:
-          path: ./
-          
-      - name: Remove fcli_completion script
-        run: rm -f artifact/fcli_completion
-          
-      - name: PROD - Prepare release PR
-        if: github.ref == 'refs/heads/main'
-        uses: GoogleCloudPlatform/release-please-action@v3
-        with:
-          command: release-pr
-          release-type: simple
-          package-name: ${{ github.event.repository.name }}
-          default-branch: main
-          
-      - name: DEV - Prepare GitHub release 
-        if: needs.build.outputs.do_dev_release
-        run: |
-          gh release delete ${{ needs.build.outputs.release_tag }} -y || true
-          gh release create ${{ needs.build.outputs.release_tag }} -p -t "Development Release - ${GITHUB_REF#refs/heads/} branch" -n 'See `Assets` section below for latest build artifacts'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: DEV - Update ${{ needs.build.outputs.release_tag }} tag
-        uses: richardsimko/update-tag@v1
-        if: needs.build.outputs.do_dev_release
-        with:
-          tag_name: ${{ needs.build.outputs.release_tag }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
-          
-      - name: Upload assets to release
-        if: needs.build.outputs.do_release
-        run: |
-          files=$(find "./artifact" -type f -printf "%p ")
-          gh release upload "${{ needs.build.outputs.release_tag }}" $files --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-     
-  publishPages:
-    name: publishPages
-    if: needs.build.outputs.do_release
-    needs: [build, release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check-out existing docs from gh-pages branch
-        uses: actions/checkout@v3
-        with:
-          ref: gh-pages
-          path: docs
-        
-      - name: Download artifacts
-        uses: actions/download-artifact@v3
-        with:
-          path: ./
-          
-      - name: Update documentation from artifact
-        run: |
-          # Delete all Git-related files
-          rm -rf docs/.git*
-          
-          # Extract top-level documentation resources
-          # TODO Should we do this only when building a release, or also for dev_main,
-          #      or for all (dev & release) versions like we do now?
-          unzip -o artifact/docs-gh-pages.zip -d "docs"
-          
-          # Define the output directory, based on tag/branch name
-          versionDir=docs/${{ needs.build.outputs.release_tag }}
-          
-          # Delete, recreate and fill the directory for the current tag/branch name,
-          # while leaving documentation for other tags/branches intact (as checked out above)
-          rm -rf "${versionDir}"
-          mkdir -p "${versionDir}"
-          unzip artifact/docs-jekyll.zip -d "${versionDir}"
-          
-          # Recreate version data files, which may be empty if no versions available
-          cd docs
-          mkdir -p _data/versions
-          touch _data/versions/release.yml
-          touch _data/versions/dev.yml
-          ls -d v*.*.* | sort -rV | while read line; do echo "- '$line'"; done > _data/versions/release.yml
-          ls -d dev_* | sort | while read line; do echo "- '$line'"; done > _data/versions/dev.yml
-          
-      - name: Deploy documentation
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
-          enable_jekyll: true
-          
-          
-  cleanup:
-    name: cleanup
-    if: needs.build.outputs.do_release 
-    needs: [release, publishPages] 
-    runs-on: ubuntu-latest 
-    steps:
-      - name: Delete artifacts if uploaded to release
-        uses: geekyeggo/delete-artifact@v1
-        with:
-          name: artifact
-          failOnError: false   
+          name: fcli-windows
+
+#      - uses: actions/upload-artifact@v3
+#        with:
+#          path: ./fcli-windows.zip
+
+#  release:
+#    name: release
+#    if: needs.build.outputs.do_release
+#    needs: [build, native_linux, native_mac, native_win]
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Check-out source code
+#        uses: actions/checkout@v3
+#
+#      - name: Download artifacts
+#        uses: actions/download-artifact@v3
+#        with:
+#          path: ./
+#
+#      - name: Remove fcli_completion script
+#        run: rm -f artifact/fcli_completion
+#
+#      - name: PROD - Prepare release PR
+#        if: github.ref == 'refs/heads/main'
+#        uses: GoogleCloudPlatform/release-please-action@v3
+#        with:
+#          command: release-pr
+#          release-type: simple
+#          package-name: ${{ github.event.repository.name }}
+#          default-branch: main
+#
+#      - name: DEV - Prepare GitHub release
+#        if: needs.build.outputs.do_dev_release
+#        run: |
+#          gh release delete ${{ needs.build.outputs.release_tag }} -y || true
+#          gh release create ${{ needs.build.outputs.release_tag }} -p -t "Development Release - ${GITHUB_REF#refs/heads/} branch" -n 'See `Assets` section below for latest build artifacts'
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#
+#      - name: DEV - Update ${{ needs.build.outputs.release_tag }} tag
+#        uses: richardsimko/update-tag@v1
+#        if: needs.build.outputs.do_dev_release
+#        with:
+#          tag_name: ${{ needs.build.outputs.release_tag }}
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#
+#      - name: Upload assets to release
+#        if: needs.build.outputs.do_release
+#        run: |
+#          files=$(find "./artifact" -type f -printf "%p ")
+#          gh release upload "${{ needs.build.outputs.release_tag }}" $files --clobber
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#
+#  publishPages:
+#    name: publishPages
+#    if: needs.build.outputs.do_release
+#    needs: [build, release]
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Check-out existing docs from gh-pages branch
+#        uses: actions/checkout@v3
+#        with:
+#          ref: gh-pages
+#          path: docs
+#
+#      - name: Download artifacts
+#        uses: actions/download-artifact@v3
+#        with:
+#          path: ./
+#
+#      - name: Update documentation from artifact
+#        run: |
+#          # Delete all Git-related files
+#          rm -rf docs/.git*
+#
+#          # Extract top-level documentation resources
+#          # TODO Should we do this only when building a release, or also for dev_main,
+#          #      or for all (dev & release) versions like we do now?
+#          unzip -o artifact/docs-gh-pages.zip -d "docs"
+#
+#          # Define the output directory, based on tag/branch name
+#          versionDir=docs/${{ needs.build.outputs.release_tag }}
+#
+#          # Delete, recreate and fill the directory for the current tag/branch name,
+#          # while leaving documentation for other tags/branches intact (as checked out above)
+#          rm -rf "${versionDir}"
+#          mkdir -p "${versionDir}"
+#          unzip artifact/docs-jekyll.zip -d "${versionDir}"
+#
+#          # Recreate version data files, which may be empty if no versions available
+#          cd docs
+#          mkdir -p _data/versions
+#          touch _data/versions/release.yml
+#          touch _data/versions/dev.yml
+#          ls -d v*.*.* | sort -rV | while read line; do echo "- '$line'"; done > _data/versions/release.yml
+#          ls -d dev_* | sort | while read line; do echo "- '$line'"; done > _data/versions/dev.yml
+#
+#      - name: Deploy documentation
+#        uses: peaceiris/actions-gh-pages@v3
+#        with:
+#          github_token: ${{ secrets.GITHUB_TOKEN }}
+#          publish_dir: ./docs
+#          enable_jekyll: true
+
+
+#  cleanup:
+#    name: cleanup
+#    if: needs.build.outputs.do_release
+#    needs: [release, publishPages]
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Delete artifacts if uploaded to release
+#        uses: geekyeggo/delete-artifact@v1
+#        with:
+#          name: artifact
+#          failOnError: false
